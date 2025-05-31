@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Editor from '@monaco-editor/react';
 import axios from 'axios';
-import { ExecutionResult, Problem, TestCase } from '../types';
+import { ExecutionResult, Problem } from '../types';
 
 interface CodeEditorProps {
   problem: Problem;
@@ -16,7 +16,7 @@ export function CodeEditor({ problem }: CodeEditorProps) {
   const runCode = async () => {
     setIsRunning(true);
     try {
-      const response = await axios.post<ExecutionResult>('http://localhost:3000/execute', {
+      const response = await axios.post<ExecutionResult>('https://deepcode-api.onrender.com', {
         code,
         language,
         input: problem.examples[0].input
@@ -24,7 +24,7 @@ export function CodeEditor({ problem }: CodeEditorProps) {
       
       setOutput(response.data.error || response.data.output);
     } catch (error) {
-      setOutput('Error executing code');
+      setOutput('Error executing code. Please try again later.');
     }
     setIsRunning(false);
   };
@@ -44,6 +44,9 @@ export function CodeEditor({ problem }: CodeEditorProps) {
           <option value="py">Python</option>
           <option value="cpp">C++</option>
           <option value="java">Java</option>
+          <option value="c">C</option>
+          <option value="go">Go</option>
+          <option value="cs">C#</option>
         </select>
         <button
           onClick={runCode}

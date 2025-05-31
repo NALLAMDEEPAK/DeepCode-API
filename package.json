@@ -3,11 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "frontend",
-    "backend"
+    "frontend"
   ],
   "scripts": {
-    "frontend": "npm run dev --workspace=frontend",
-    "backend": "npm run start:dev --workspace=backend"
+    "dev": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=frontend"
   }
 }
