@@ -1,70 +1,78 @@
 import { useState } from 'react';
 import Editor from '@monaco-editor/react';
 import axios from 'axios';
-import { CodeExecutionResponse } from '../types';
+import { ExecutionResult, Problem, TestCase } from '../types';
 
-interface Props {
-  problemId: string;
-  starterCode: string;
-  language: string;
-  testCases: { input: string; expectedOutput: string; }[];
+interface CodeEditorProps {
+  problem: Problem;
 }
 
-export default function CodeEditor({ problemId, starterCode, language, testCases }: Props) {
-  const [code, setCode] = useState(starterCode);
-  const [output, setOutput] = useState<CodeExecutionResponse | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
+export function CodeEditor({ problem }: CodeEditorProps) {
+  const [language, setLanguage] = useState<string>('js');
+  const [code, setCode] = useState<string>(problem.starterCode[language] || '');
+  const [output, setOutput] = useState<string>('');
+  const [isRunning, setIsRunning] = useState<boolean>(false);
 
-  const runCode = async (isTest: boolean = false) => {
+  const runCode = async () => {
     setIsRunning(true);
     try {
-      const response = await axios.post('http://localhost:3000/execute', {
+      const response = await axios.post<ExecutionResult>('http://localhost:3000/execute', {
         code,
         language,
-        input: isTest ? testCases[0].input : ''
+        input: problem.examples[0].input
       });
-      setOutput(response.data);
+      
+      setOutput(response.data.error || response.data.output);
     } catch (error) {
-      console.error('Error executing code:', error);
+      setOutput('Error executing code');
     }
     setIsRunning(false);
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <Editor
-        height="70vh"
-        defaultLanguage={language}
-        value={code}
-        onChange={(value) => setCode(value || '')}
-        theme="vs-dark"
-        options={{
-          minimap: { enabled: false },
-          fontSize: 14,
-        }}
-      />
-      <div className="flex gap-2 my-4">
-        <button
-          onClick={() => runCode(false)}
-          disabled={isRunning}
-          className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-4 mb-4">
+        <select
+          value={language}
+          onChange={(e) => {
+            setLanguage(e.target.value);
+            setCode(problem.starterCode[e.target.value] || '');
+          }}
+          className="rounded-md border-gray-300"
         >
-          Run Code
-        </button>
+          <option value="js">JavaScript</option>
+          <option value="py">Python</option>
+          <option value="cpp">C++</option>
+          <option value="java">Java</option>
+        </select>
         <button
-          onClick={() => runCode(true)}
+          onClick={runCode}
           disabled={isRunning}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+          className="px-4 py-2 bg-green-500 text-white rounded-md disabled:bg-gray-400"
         >
-          Test
+          {isRunning ? 'Running...' : 'Run Code'}
         </button>
       </div>
-      {output && (
-        <div className="bg-gray-800 text-white p-4 rounded">
-          <h3 className="font-bold mb-2">Output:</h3>
-          <pre className="whitespace-pre-wrap">{output.error || output.output}</pre>
-        </div>
-      )}
+      
+      <div className="flex-1">
+        <Editor
+          height="100%"
+          defaultLanguage={language}
+          value={code}
+          onChange={(value) => setCode(value || '')}
+          theme="vs-dark"
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            lineNumbers: 'on',
+            automaticLayout: true,
+          }}
+        />
+      </div>
+      
+      <div className="mt-4 bg-gray-800 text-white p-4 rounded-md h-32 overflow-auto">
+        <pre>{output}</pre>
+      </div>
     </div>
   );
 }

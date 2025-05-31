@@ -7,6 +7,6 @@ export class ExecuteController {
 
   @Post()
   async execute(@Body() body: { code: string; language: string; input: string }) {
-    return this.executeService.executeCode(body);
+    return this.executeService.execute(body);
   }
 }

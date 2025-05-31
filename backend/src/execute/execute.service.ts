@@ -3,7 +3,7 @@ import axios from 'axios';
 
 @Injectable()
 export class ExecuteService {
-  async executeCode({ code, language, input }) {
+  async execute({ code, language, input }: { code: string; language: string; input: string }) {
     try {
       const response = await axios.post('http://localhost:8080', {
         code,
@@ -12,7 +12,11 @@ export class ExecuteService {
       });
       return response.data;
     } catch (error) {
-      throw error.response?.data || error;
+      return {
+        error: error.message,
+        output: '',
+        language
+      };
     }
   }
 }

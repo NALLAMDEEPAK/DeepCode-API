@@ -1,11 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { Problem } from './interfaces/problem.interface';
+import { Injectable, NotFoundException } from '@nestjs/common';
 
 @Injectable()
 export class ProblemsService {
-  private readonly problems: Problem[] = [
+  private readonly problems = [
     {
-      id: '1',
+      id: 1,
       title: 'Two Sum',
       difficulty: 'Easy',
       description: 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.',
@@ -22,24 +21,33 @@ export class ProblemsService {
         '-109 <= target <= 109'
       ],
       starterCode: {
-        python: 'def twoSum(nums, target):\n    # Your code here\n    pass',
-        javascript: 'function twoSum(nums, target) {\n    // Your code here\n}',
-        typescript: 'function twoSum(nums: number[], target: number): number[] {\n    // Your code here\n}'
-      },
-      testCases: [
-        {
-          input: '[2,7,11,15]\n9',
-          expectedOutput: '[0,1]'
-        }
-      ]
+        js: `function twoSum(nums, target) {
+    // Your code here
+};`,
+        py: `def twoSum(nums, target):
+    # Your code here
+    pass`,
+        cpp: `vector<int> twoSum(vector<int>& nums, int target) {
+    // Your code here
+}`,
+        java: `class Solution {
+    public int[] twoSum(int[] nums, int target) {
+        // Your code here
+    }
+}`
+      }
     }
   ];
 
-  findAll(): Problem[] {
+  findAll() {
     return this.problems;
   }
 
-  findOne(id: string): Problem {
-    return this.problems.find(problem => problem.id === id);
+  findOne(id: number) {
+    const problem = this.problems.find(p => p.id === id);
+    if (!problem) {
+      throw new NotFoundException(`Problem with ID ${id} not found`);
+    }
+    return problem;
   }
 }

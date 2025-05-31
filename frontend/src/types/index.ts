@@ -1,14 +1,11 @@
 export interface Problem {
-  id: string;
+  id: number;
   title: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
   description: string;
   examples: Example[];
   constraints: string[];
-  starterCode: {
-    [key: string]: string;
-  };
-  testCases: TestCase[];
+  starterCode: Record<string, string>;
 }
 
 export interface Example {
@@ -22,10 +19,9 @@ export interface TestCase {
   expectedOutput: string;
 }
 
-export interface CodeExecutionResponse {
+export interface ExecutionResult {
   output: string;
   error: string;
   language: string;
-  timeStamp: number;
-  status: number;
+  info: string;
 }
