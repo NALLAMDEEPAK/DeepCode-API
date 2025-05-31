@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { Problem } from '../types';
+import type { Problem } from '../types';
 
 export function ProblemList() {
   const [problems, setProblems] = useState<Problem[]>([]);

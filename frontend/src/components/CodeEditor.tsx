@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Editor from '@monaco-editor/react';
 import axios from 'axios';
-import { ExecutionResult, Problem } from '../types';
+import type { ExecutionResult, Problem } from '../types';
 
 interface CodeEditorProps {
   problem: Problem;
