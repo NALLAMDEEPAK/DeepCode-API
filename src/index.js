@@ -31,6 +31,10 @@ app.post("/", async (req, res) => {
     }
 })
 
+app.get("/health-check", async(req, res) => {
+    res.status(200);
+}) 
+
 app.get('/list', async (req, res) => {
     const body = []
 
