@@ -7,10 +7,11 @@ const commandMap = (jobID, language) => {
     switch (language) {
         case 'java':
             return {
+                compileCodeCommand: 'javac',
+                compilationArgs: [`${CODES_DIR}/${jobID}.java`],
                 executeCodeCommand: 'java',
-                executionArgs: [
-                    `${CODES_DIR}/${jobID}.java`
-                ],
+                executionArgs: ['-cp', `${CODES_DIR}`, jobID],
+                outputExt: 'class',
                 compilerInfoCommand: 'java --version'
             };
         case 'cpp':
