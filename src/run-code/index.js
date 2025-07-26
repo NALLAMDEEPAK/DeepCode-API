@@ -19,9 +19,8 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
       error: `Invalid language. Supported languages: ${supportedLanguages.join(", ")}.`,
     };
   }
-  console.log(code, language)
+
   const { jobID } = await createCodeFile(language, code);
-  console.log(jobID)
   const {
     compileCodeCommand,
     compilationArgs,
@@ -29,8 +28,6 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
     executionArgs,
     outputExt,
   } = commandMap(jobID, language);
-
-  console.log(compileCodeCommand, compilationArgs, executeCodeCommand, executionArgs, outputExt);
 
   let errorCode = 0;
   let errorIndex = -1;
@@ -95,114 +92,111 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
     allTestcaseInputs.push(linesForThisTestcase.join("\n"));
   }
 
-  const results = [];
+  const testcasePromises = allTestcaseInputs.map((testcaseInput, i) => {
+    return (async () => {
+      let maxMemory = 0;
 
-  for (let i = 0; i < allTestcaseInputs.length; i++) {
-    const testcaseInput = allTestcaseInputs[i];
-    let maxMemory = 0;
+      try {
+        const result = await new Promise((resolve, reject) => {
+          const executeCode = spawn(executeCodeCommand, executionArgs || []);
+          let output = "";
+          let error = "";
+          let localErrorCode = 0;
 
-    try {
-      const result = await new Promise((resolve, reject) => {
-        const executeCode = spawn(executeCodeCommand, executionArgs || []);
-        let output = "";
-        let error = "";
-        let localErrorCode = 0;
+          const start = process.hrtime.bigint();
 
-        const start = process.hrtime.bigint();
+          const timer = setTimeout(() => {
+            executeCode.kill("SIGHUP");
+            clearInterval(memoryInterval);
+            reject({
+              status: 408,
+              testcaseIndex: i,
+              error: `Timeout: Testcase ${i + 1} exceeded ${TIMEOUT_MS / 1000}s`,
+            });
+          }, TIMEOUT_MS);
 
-        const timer = setTimeout(() => {
-          executeCode.kill("SIGHUP");
-          clearInterval(memoryInterval);
-          reject({
-            status: 408,
-            testcaseIndex: i,
-            error: `Timeout: Testcase ${i + 1} exceeded ${TIMEOUT_MS / 1000}s`,
-          });
-        }, TIMEOUT_MS);
-
-        const memoryInterval = setInterval(async () => {
-          try {
-            const stats = await pidusage(executeCode.pid);
-            maxMemory = Math.max(maxMemory, stats.memory);
-          } catch (_) {}
-        }, 50);
-
-        executeCode.stdin.write(testcaseInput);
-        executeCode.stdin.end();
-
-        executeCode.stdout.on("data", (data) => {
-          output += data.toString();
-        });
-
-        executeCode.stderr.on("data", (data) => {
-          error += data.toString();
-        });
-
-        executeCode.on("exit", async (code) => {
-          clearTimeout(timer);
-          clearInterval(memoryInterval);
-          const end = process.hrtime.bigint();
-          const durationMs = Number(end - start) / 1000000;
-
-          if (!maxMemory) {
+          const memoryInterval = setInterval(async () => {
             try {
               const stats = await pidusage(executeCode.pid);
-              maxMemory = stats.memory;
+              maxMemory = Math.max(maxMemory, stats.memory);
             } catch (_) {}
-          }
+          }, 50);
 
-          if (error.trim()) {
-            localErrorCode = error.trim().startsWith('File "/tmp/codes/') ? 1 : 2;
-          }
+          executeCode.stdin.write(testcaseInput);
+          executeCode.stdin.end();
 
-          resolve({
-            index: i,
-            input: testcaseInput,
-            output: output.trim(),
-            error: error.trim(),
-            durationMs,
-            memoryBytes: maxMemory,
-            exitCode: code,
-            errorCode: localErrorCode,
+          executeCode.stdout.on("data", (data) => {
+            output += data.toString();
+          });
+
+          executeCode.stderr.on("data", (data) => {
+            error += data.toString();
+          });
+
+          executeCode.on("exit", async (code) => {
+            clearTimeout(timer);
+            clearInterval(memoryInterval);
+            const end = process.hrtime.bigint();
+            const durationMs = Number(end - start) / 1000000;
+
+            if (!maxMemory) {
+              try {
+                const stats = await pidusage(executeCode.pid);
+                maxMemory = stats.memory;
+              } catch (_) {}
+            }
+
+            if (error.trim()) {
+              localErrorCode = error.trim().startsWith('File "/tmp/codes/') ? 1 : 2;
+            }
+
+            resolve({
+              index: i,
+              input: testcaseInput,
+              output: output.trim(),
+              error: error.trim(),
+              durationMs,
+              memoryBytes: maxMemory,
+              exitCode: code,
+              errorCode: localErrorCode,
+            });
+          });
+
+          executeCode.on("error", (err) => {
+            clearTimeout(timer);
+            clearInterval(memoryInterval);
+            reject({
+              status: 500,
+              testcaseIndex: i,
+              error: `Execution failed: ${err.message}`,
+            });
           });
         });
 
-        executeCode.on("error", (err) => {
-          clearTimeout(timer);
-          clearInterval(memoryInterval);
-          reject({
-            status: 500,
-            testcaseIndex: i,
-            error: `Execution failed: ${err.message}`,
-          });
-        });
-      });
+        return result;
 
-      results.push(result);
-
-    } catch (executionError) {
-      errorCode = 2;
-      errorIndex = executionError.testcaseIndex ?? i;
-      results.push({
-        index: i,
-        input: testcaseInput,
-        output: executionError.error || "Runtime Error",
-        error: executionError.error || "Runtime Error",
-        durationMs: TIMEOUT_MS,
-        memoryBytes: maxMemory,
-        errorCode: 2,
-      });
-    }
-    if (results.at(-1).errorCode !== 0) {
-      errorCode = results.at(-1).errorCode;
-      if (errorIndex === -1) {
-        errorIndex = results.at(-1).index;
+      } catch (executionError) {
+        return {
+          index: i,
+          input: testcaseInput,
+          output: executionError.error || "Runtime Error",
+          error: executionError.error || "Runtime Error",
+          durationMs: TIMEOUT_MS,
+          memoryBytes: maxMemory,
+          errorCode: 2,
+        };
       }
-      if (results.at(-1).errorCode === 1) break; // Stop on compilation-like runtime error
+    })();
+  });
+
+  const results = await Promise.all(testcasePromises);
+  for (const r of results) {
+    if (r.errorCode !== 0) {
+      errorCode = r.errorCode;
+      errorIndex = r.index;
+      if (errorCode === 1) break;
     }
   }
-
-  // === Cleanup ===
   await removeCodeFile(jobID, language, outputExt);
 
   let res = results
