@@ -19,9 +19,7 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
       error: `Invalid language. Supported languages: ${supportedLanguages.join(", ")}.`,
     };
   }
-  console.log(code, language)
   const { jobID } = await createCodeFile(language, code);
-  console.log(jobID)
   const {
     compileCodeCommand,
     compilationArgs,
@@ -30,12 +28,13 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
     outputExt,
   } = commandMap(jobID, language);
 
-  console.log(compileCodeCommand, compilationArgs, executeCodeCommand, executionArgs, outputExt);
-
   let errorCode = 0;
   let errorIndex = -1;
 
   if (compileCodeCommand) {
+    console.log(`🔨 Starting compilation for ${language}...`);
+    const compileStartTime = Date.now();
+    
     try {
       await new Promise((resolve, reject) => {
         const compileProcess = spawn(compileCodeCommand, compilationArgs || []);
@@ -46,7 +45,11 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
         });
 
         compileProcess.on("exit", (code) => {
+          const compileEndTime = Date.now();
+          const compileDuration = compileEndTime - compileStartTime;
+          
           if (code !== 0 || compileError.trim()) {
+            console.log(`❌ Compilation failed in ${compileDuration}ms with exit code ${code}`);
             reject({
               status: 200,
               output: "",
@@ -54,11 +57,15 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
               language,
             });
           } else {
+            console.log(`✅ Compilation successful in ${compileDuration}ms`);
             resolve();
           }
         });
 
         compileProcess.on("error", (err) => {
+          const compileEndTime = Date.now();
+          const compileDuration = compileEndTime - compileStartTime;
+          console.log(`💥 Compilation error in ${compileDuration}ms: ${err.message}`);
           reject({
             status: 500,
             output: "",
@@ -95,14 +102,14 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
     allTestcaseInputs.push(linesForThisTestcase.join("\n"));
   }
 
-  const results = [];
-
-  for (let i = 0; i < allTestcaseInputs.length; i++) {
-    const testcaseInput = allTestcaseInputs[i];
+  // Helper function to execute a single test case
+  const executeTestCase = async (testcaseInput, testcaseIndex) => {
+    console.log(`🏃 Testcase ${testcaseIndex + 1} execution starting...`);
     let maxMemory = 0;
 
     try {
       const result = await new Promise((resolve, reject) => {
+        console.log(`🔧 Spawning process for testcase ${testcaseIndex + 1}`);
         const executeCode = spawn(executeCodeCommand, executionArgs || []);
         let output = "";
         let error = "";
@@ -113,10 +120,11 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
         const timer = setTimeout(() => {
           executeCode.kill("SIGHUP");
           clearInterval(memoryInterval);
+          console.log(`⏰ Testcase ${testcaseIndex + 1} timed out after ${TIMEOUT_MS / 1000}s`);
           reject({
             status: 408,
-            testcaseIndex: i,
-            error: `Timeout: Testcase ${i + 1} exceeded ${TIMEOUT_MS / 1000}s`,
+            testcaseIndex,
+            error: `Timeout: Testcase ${testcaseIndex + 1} exceeded ${TIMEOUT_MS / 1000}s`,
           });
         }, TIMEOUT_MS);
 
@@ -143,6 +151,8 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
           clearInterval(memoryInterval);
           const end = process.hrtime.bigint();
           const durationMs = Number(end - start) / 1000000;
+          
+          console.log(`⏱️  Testcase ${testcaseIndex + 1} completed in ${durationMs.toFixed(2)}ms with exit code ${code}`);
 
           if (!maxMemory) {
             try {
@@ -156,7 +166,7 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
           }
 
           resolve({
-            index: i,
+            index: testcaseIndex,
             input: testcaseInput,
             output: output.trim(),
             error: error.trim(),
@@ -170,35 +180,55 @@ async function runCode({ language = "", code = "", input = "", inputLine = 1 }) 
         executeCode.on("error", (err) => {
           clearTimeout(timer);
           clearInterval(memoryInterval);
+          console.log(`❌ Testcase ${testcaseIndex + 1} failed with error: ${err.message}`);
           reject({
             status: 500,
-            testcaseIndex: i,
+            testcaseIndex,
             error: `Execution failed: ${err.message}`,
           });
         });
       });
 
-      results.push(result);
+      return result;
 
     } catch (executionError) {
-      errorCode = 2;
-      errorIndex = executionError.testcaseIndex ?? i;
-      results.push({
-        index: i,
+      console.log(`💥 Testcase ${testcaseIndex + 1} caught execution error:`, executionError.error || "Runtime Error");
+      return {
+        index: testcaseIndex,
         input: testcaseInput,
         output: executionError.error || "Runtime Error",
         error: executionError.error || "Runtime Error",
         durationMs: TIMEOUT_MS,
         memoryBytes: maxMemory,
+        exitCode: -1,
         errorCode: 2,
-      });
+      };
     }
-    if (results.at(-1).errorCode !== 0) {
-      errorCode = results.at(-1).errorCode;
+  };
+
+  // Execute all test cases in parallel
+  console.log(`🚀 Starting ${allTestcaseInputs.length} test cases in parallel...`);
+  const startTime = Date.now();
+  
+  const testCasePromises = allTestcaseInputs.map((testcaseInput, index) => {
+    console.log(`📝 Testcase ${index + 1} started at ${new Date().toISOString()}`);
+    return executeTestCase(testcaseInput, index);
+  });
+
+  const results = await Promise.all(testCasePromises);
+  const totalTime = Date.now() - startTime;
+  console.log(`✅ All ${allTestcaseInputs.length} test cases completed in ${totalTime}ms`);
+
+  // Sort results by index to maintain original order
+  results.sort((a, b) => a.index - b.index);
+
+  // Determine overall error code and error index
+  for (const result of results) {
+    if (result.errorCode !== 0) {
+      errorCode = result.errorCode;
       if (errorIndex === -1) {
-        errorIndex = results.at(-1).index;
+        errorIndex = result.index;
       }
-      if (results.at(-1).errorCode === 1) break; // Stop on compilation-like runtime error
     }
   }
 
